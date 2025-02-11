@@ -53,7 +53,7 @@ dependencies = [
 # contains some optimizations and fixes 
 optional-dependencies.legacy = [
     "anemoi-models @ git+https://github.com/metno/anemoi-models.git@feature/fix-memory-inference-chunking",
-    "aifs @ git+ssh://git@github.com/metno/aifs-mono.git@production",
+    #"aifs @ git+ssh://git@github.com/metno/aifs-mono.git@production",
 ]
 
 optional-dependencies.tests = [
