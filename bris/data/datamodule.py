@@ -168,7 +168,7 @@ class DataModule(pl.LightningDataModule):
             LOGGER.info("Using grid indices from dataloader config") 
         else:
             grid_indices = FullGrid(
-                nodes_name="data",
+                nodes_name="grid",
                 reader_group_size=reader_group_size
             )
             LOGGER.info("grid_indices not found in dataloader config, defaulting to FullGrid")
