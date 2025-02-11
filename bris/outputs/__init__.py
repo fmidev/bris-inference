@@ -28,6 +28,9 @@ def instantiate(name: str, predict_metadata: PredictMetadata, workdir: str, init
     elif name == "netcdf":
         return Netcdf(predict_metadata, workdir, **init_args)
 
+    elif name == "grib":
+        return Grib(predict_metadata, workdir, **init_args)
+
     else:
         raise ValueError(f"Invalid output: {name}")
 
@@ -38,6 +41,18 @@ def get_required_variables(name, init_args):
     """
 
     if name == "netcdf":
+        if "variables" in init_args:
+            variables = init_args["variables"]
+            if "extra_variables" in init_args:
+                for name in init_args["extra_variables"]:
+                    if name == "10si":
+                        variables += ["10u", "10v"]
+            variables = list(set(variables))
+            return variables
+        else:
+            return [None]
+
+    elif name == "grib":
         if "variables" in init_args:
             variables = init_args["variables"]
             if "extra_variables" in init_args:
@@ -149,4 +164,5 @@ class Output:
 
 from .intermediate import Intermediate
 from .netcdf import Netcdf
+from .grib import Grib
 from .verif import Verif
