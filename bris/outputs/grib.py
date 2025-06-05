@@ -144,6 +144,7 @@ class Grib(Output):
             "specific_humidity_pl":                 (0, 0, 1, 0, None),
             "upward_air_velocity_pl":               (0, 0, 2, 9, None),
             "dew_point_temperature_2m":             (0, 0, 0, 6, None),
+            "precipitation_amount":                 (8, 0, 1, 52, 1),
         }.get(param)
 
 
@@ -207,12 +208,17 @@ class Grib(Output):
             day = int(validtime.strftime("%d"))
             hour = int(validtime.strftime("%H"))
 
-            ecc.codes_set(grib, "lengthOfTimeRange", 1)
             ecc.codes_set(grib, "typeOfStatisticalProcessing", tosp)
             ecc.codes_set(grib, "yearOfEndOfOverallTimeInterval", year)
             ecc.codes_set(grib, "monthOfEndOfOverallTimeInterval", month)
             ecc.codes_set(grib, "dayOfEndOfOverallTimeInterval", day)
             ecc.codes_set(grib, "hourOfEndOfOverallTimeInterval", hour)
+
+            # forecastTime is start of time interval
+            # hard code to 6h
+            lengthOfTimeRange = 6
+            ecc.codes_set(grib, "forecastTime", int(leadtime.total_seconds() / 3600) - lengthOfTimeRange)
+            ecc.codes_set(grib, "lengthOfTimeRange", lengthOfTimeRange)
 
         for key, val in self.grib_keys.items():
             ecc.codes_set(grib, key, val)
