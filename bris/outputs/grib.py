@@ -1,4 +1,5 @@
 from datetime import datetime
+import math
 
 import eccodes as ecc
 import numpy as np
@@ -214,8 +215,8 @@ class Grib(Output):
             lats = np.reshape(self.pm.lats, self.pm.field_shape).astype(np.double)
             lons = np.reshape(self.pm.lons, self.pm.field_shape).astype(np.double)
             x, y = projections.get_xy(lats, lons, self.proj4_str)
-            dx = int(x[1] - x[0])
-            dy = int(y[1] - y[0])
+            dx = math.ceil(x[1] - x[0])
+            dy = math.ceil(y[1] - y[0])
 
         # set geometry from proj attributes
         attrs = {}
