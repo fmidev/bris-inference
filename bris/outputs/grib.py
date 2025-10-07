@@ -173,7 +173,7 @@ class Grib(Output):
             "vertical_velocity_pl": (0, 0, 2, 8, None),
             "tcw": (0, 0, 1, 3, None),
             "skt": (0, 0, 0, 17, None),
-            "precipitation_amount": (8, 0, 1, 49, None),
+            "precipitation_amount": (8, 0, 1, 52, None),
             "cp": (0, 0, 1, 10, None),
         }.get(param)
 
@@ -203,7 +203,7 @@ class Grib(Output):
             "vertical_velocity_pl": (11, 0, 2, 8, None),
             "tcw": (11, 0, 1, 3, None),
             "skt": (11, 0, 0, 17, None),
-            "precipitation_amount": (11, 0, 1, 49, None),
+            "precipitation_amount": (11, 0, 1, 52, None),
             "cp": (11, 0, 1, 10, None),
         }.get(param)
 
@@ -308,7 +308,7 @@ class Grib(Output):
             ecc.codes_set(grib, "perturbationNumber", ensemble_member + 1)
             ecc.codes_set(grib, "numberOfForecastsInEnsemble", self.pm.num_members)
 
-        if tosp == 1:
+        if pdtn == 8:
             year = int(validtime.strftime("%Y"))
             month = int(validtime.strftime("%m"))
             day = int(validtime.strftime("%d"))
