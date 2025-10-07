@@ -173,7 +173,7 @@ class Grib(Output):
             "vertical_velocity_pl": (0, 0, 2, 8, None),
             "tcw": (0, 0, 1, 3, None),
             "skt": (0, 0, 0, 17, None),
-            "precipitation_amount": (8, 0, 1, 52, None),
+            "precipitation_amount": (8, 0, 1, 52, 1),
             "cp": (0, 0, 1, 10, None),
         }.get(param)
 
@@ -203,7 +203,7 @@ class Grib(Output):
             "vertical_velocity_pl": (11, 0, 2, 8, None),
             "tcw": (11, 0, 1, 3, None),
             "skt": (11, 0, 0, 17, None),
-            "precipitation_amount": (11, 0, 1, 52, None),
+            "precipitation_amount": (11, 0, 1, 52, 1),
             "cp": (11, 0, 1, 10, None),
         }.get(param)
 
