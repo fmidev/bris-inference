@@ -98,8 +98,8 @@ class MultiEncDecPredictor(BasePredictor):
             _indices, _variables = get_variable_indices(
                 required_vars_dec,
                 datamodule.data_reader.datasets[dec_index].variables,
-                self.data_indices[dec_index].internal_data,
-                self.data_indices[dec_index].internal_model,
+                self._get_internal_data(dec_index),
+                self._get_internal_model(dec_index),
                 dec_index,
             )
             self.indices += (_indices,)
@@ -108,6 +108,20 @@ class MultiEncDecPredictor(BasePredictor):
         self.set_static_forcings(
             datamodule.data_reader, self.metadata["config"]["data"]["zip"]
         )
+
+    def _get_internal_data(self, dec_index: int):
+        """Get internal_data with fallback for API compatibility."""
+        if hasattr(self.data_indices[dec_index], "internal_data"):
+            return self.data_indices[dec_index].internal_data
+        else:
+            return self.data_indices[dec_index].data
+
+    def _get_internal_model(self, dec_index: int):
+        """Get internal_model with fallback for API compatibility."""
+        if hasattr(self.data_indices[dec_index], "internal_model"):
+            return self.data_indices[dec_index].internal_model
+        else:
+            return self.data_indices[dec_index].model
         self.model.eval()
 
     def set_static_forcings(self, data_reader: Iterable, data_config: dict) -> None:
@@ -141,7 +155,7 @@ class MultiEncDecPredictor(BasePredictor):
                 selection=selection,
                 data_reader=data_reader,
                 data_normalized=self.model.pre_processors(data_input, in_place=True),
-                internal_data=self.data_indices[dset].internal_data,
+                internal_data=self._get_internal_data(dset),
                 dataset_no=dset,
             )
 
@@ -154,8 +168,8 @@ class MultiEncDecPredictor(BasePredictor):
         for i in range(len(x)):
             x[i] = x[i].roll(-1, dims=1)
             # Get prognostic variables:
-            x[i][:, -1, :, :, self.data_indices[i].internal_model.input.prognostic] = (
-                y_pred[i][..., self.data_indices[i].internal_model.output.prognostic]
+            x[i][:, -1, :, :, self._get_internal_model(i).input.prognostic] = (
+                y_pred[i][..., self._get_internal_model(i).output.prognostic]
             )
 
             forcings = get_dynamic_forcings(
@@ -173,7 +187,7 @@ class MultiEncDecPredictor(BasePredictor):
                         -1,
                         :,
                         :,
-                        self.data_indices[i].internal_model.input.name_to_index[
+                        self._get_internal_model(i).input.name_to_index[
                             forcing
                         ],
                     ] = torch.from_numpy(value)
@@ -183,7 +197,7 @@ class MultiEncDecPredictor(BasePredictor):
                         -1,
                         :,
                         :,
-                        self.data_indices[i].internal_model.input.name_to_index[
+                        self._get_internal_model(i).input.name_to_index[
                             forcing
                         ],
                     ] = value
@@ -242,9 +256,7 @@ class MultiEncDecPredictor(BasePredictor):
                             time_index,
                             :,
                             :,
-                            self.data_indices[
-                                dec_index
-                            ].internal_data.input.name_to_index[forcing],
+                            self._get_internal_data(dec_index).input.name_to_index[forcing],
                         ] = torch.from_numpy(value).to(dtype=_data_input.dtype)
                     else:
                         _data_input[
@@ -252,9 +264,7 @@ class MultiEncDecPredictor(BasePredictor):
                             time_index,
                             :,
                             :,
-                            self.data_indices[
-                                dec_index
-                            ].internal_data.input.name_to_index[forcing],
+                            self._get_internal_data(dec_index).input.name_to_index[forcing],
                         ] = value
             data_input += [_data_input]
 
@@ -264,7 +274,7 @@ class MultiEncDecPredictor(BasePredictor):
 
         data_input = self.model.pre_processors(data_input, in_place=True)
         x = [
-            data_input[i][..., self.data_indices[i].internal_data.input.full]
+            data_input[i][..., self._get_internal_data(i).input.full]
             for i in range(num_dsets)
         ]
 
