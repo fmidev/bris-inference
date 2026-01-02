@@ -1,5 +1,6 @@
 import copy
 import time
+from abc import abstractmethod
 from typing import Optional
 
 import numpy as np
@@ -50,12 +51,16 @@ def get_required_variables(name, init_args):
 
     if name == "netcdf":
         if "variables" in init_args:
-            variables = init_args["variables"]
+            variables = list(init_args["variables"])
             if "extra_variables" in init_args:
                 for var_name in init_args["extra_variables"]:
                     if var_name == "ws":
                         variables += ["10u", "10v"]
-            variables = sorted(list(set(variables)))
+            if "accumulated_variables" in init_args:
+                for var_name in init_args["accumulated_variables"]:
+                    if var_name not in variables:
+                        variables += [var_name]
+            variables = sorted(set(variables))
             return variables
         return [None]
 
@@ -66,12 +71,12 @@ def get_required_variables(name, init_args):
 
     if name == "grib":
         if "variables" in init_args:
-            variables = init_args["variables"]
+            variables = list(init_args["variables"])
             if "extra_variables" in init_args:
                 for name in init_args["extra_variables"]:
                     if name == "ws":
                         variables += ["10u", "10v"]
-            variables = sorted(list(set(variables)))
+            variables = sorted(set(variables))
             return variables
         return [None]
 
@@ -108,6 +113,9 @@ class Output:
             ensemble_member: Which ensemble member is this?
             pred: 3D numpy array with dimensions (leadtime, location, variable)
         """
+        assert ensemble_member >= 0
+        if ensemble_member >= self.pm.num_members:
+            return
 
         # Append extra variables to prediction
         for name in self.extra_variables:
@@ -139,8 +147,6 @@ class Output:
             pred.shape[2],
             len(self.pm.variables),
         )
-        assert ensemble_member >= 0
-        assert ensemble_member < self.pm.num_members
 
         t1 = time.perf_counter()
         self._add_forecast(times, ensemble_member, pred)
@@ -148,6 +154,7 @@ class Output:
             f"outputs.add_forecast called _add_forecast in {time.perf_counter() - t1:.1f}s"
         )
 
+    @abstractmethod
     def _add_forecast(self, times: list, ensemble_member: int, pred: np.ndarray):
         """Subclasses should implement this"""
         raise NotImplementedError()
