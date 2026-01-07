@@ -1,4 +1,5 @@
 from datetime import datetime
+import math
 
 import eccodes as ecc
 import numpy as np
@@ -151,29 +152,36 @@ class Grib(Output):
         # (product definition template number, discipline, parameter category, parameter number, type of statistical processing)
         # https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
         return {
+            "air_pressure_at_sea_level": (0, 0, 3, 0, None),
             "air_temperature_0m": (0, 0, 0, 0, None),
             "air_temperature_2m": (0, 0, 0, 0, None),
             "air_temperature_pl": (0, 0, 0, 0, None),
+            "atmosphere_boundary_layer_thickness": (0, 0, 19, 3, None),
+            "atmosphere_mass_content_of_water": (0, 0, 1, 51, None),
+            "cloud_area_fraction": (0, 0, 6, 192, None),
+            "cp": (0, 0, 1, 10, None),
+            "dew_point_temperature_2m": (0, 0, 0, 6, None),
             "geopotential_pl": (0, 0, 3, 4, None),
+            "high_type_cloud_area_fraction": (0, 0, 6, 195, None),
+            "low_type_cloud_area_fraction": (0, 0, 6, 194, None),
+            "medium_type_cloud_area_fraction": (0, 0, 6, 193, None),
+            "precipitation_amount": (8, 0, 1, 52, 1),
             "relative_humidity_2m": (0, 0, 1, 192, None),
             "relative_humidity_pl": (0, 0, 1, 192, None),
+            "skt": (0, 0, 0, 17, None),
+            "specific_humidity_pl": (0, 0, 1, 0, None),
+            "ssrd": (0, 0, 4, 7, None),
+            "strd": (0, 0, 5, 3, None),
+            "surface_air_pressure": (0, 0, 3, 0, None),
+            "tcw": (0, 0, 1, 3, None),
+            "upward_air_velocity_pl": (0, 0, 2, 9, None),
+            "vertical_velocity_pl": (0, 0, 2, 8, None),
+            "wind_speed_10m": (0, 0, 2, 1, None),
+            "wind_speed_of_gust": (8, 0, 2, 22, 2),
             "x_wind_10m": (0, 0, 2, 2, None),
             "x_wind_pl": (0, 0, 2, 2, None),
             "y_wind_10m": (0, 0, 2, 3, None),
             "y_wind_pl": (0, 0, 2, 3, None),
-            "wind_speed_10m": (0, 0, 2, 1, None),
-            "atmosphere_boundary_layer_thickness": (0, 0, 19, 3, None),
-            "wind_speed_of_gust": (8, 0, 2, 22, 2),
-            "air_pressure_at_sea_level": (0, 0, 3, 0, None),
-            "surface_air_pressure": (0, 0, 3, 0, None),
-            "specific_humidity_pl": (0, 0, 1, 0, None),
-            "upward_air_velocity_pl": (0, 0, 2, 9, None),
-            "dew_point_temperature_2m": (0, 0, 0, 6, None),
-            "vertical_velocity_pl": (0, 0, 2, 8, None),
-            "tcw": (0, 0, 1, 3, None),
-            "skt": (0, 0, 0, 17, None),
-            "precipitation_amount": (8, 0, 1, 49, None),
-            "cp": (0, 0, 1, 10, None),
         }.get(param)
 
     def param_to_id_ens(self, param):
@@ -181,29 +189,36 @@ class Grib(Output):
         # (product definition template number, discipline, parameter category, parameter number, type of statistical processing)
         # https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
         return {
+            "air_pressure_at_sea_level": (1, 0, 3, 0, None),
             "air_temperature_0m": (11, 0, 0, 0, None),
             "air_temperature_2m": (11, 0, 0, 0, None),
             "air_temperature_pl": (11, 0, 0, 0, None),
+            "atmosphere_boundary_layer_thickness": (11, 0, 19, 3, None),
+            "atmosphere_mass_content_of_water": (11, 0, 1, 51, None),
+            "cloud_area_fraction": (11, 0, 6, 192, None),
+            "cp": (11, 0, 1, 10, None),
+            "dew_point_temperature_2m": (11, 0, 0, 6, None),
             "geopotential_pl": (11, 0, 3, 4, None),
+            "high_type_cloud_area_fraction": (11, 0, 6, 195, None),
+            "low_type_cloud_area_fraction": (11, 0, 6, 194, None),
+            "medium_type_cloud_area_fraction": (11, 0, 6, 193, None),
+            "precipitation_amount": (11, 0, 1, 52, 1),
             "relative_humidity_2m": (11, 0, 1, 192, None),
             "relative_humidity_pl": (11, 0, 1, 192, None),
+            "skt": (11, 0, 0, 17, None),
+            "specific_humidity_pl": (11, 0, 1, 0, None),
+            "ssrd": (11, 0, 4, 7, None),
+            "strd": (11, 0, 5, 3, None),
+            "surface_air_pressure": (11, 0, 3, 0, None),
+            "tcw": (11, 0, 1, 3, None),
+            "upward_air_velocity_pl": (11, 0, 2, 9, None),
+            "vertical_velocity_pl": (11, 0, 2, 8, None),
+            "wind_speed_10m": (11, 0, 2, 1, None),
+            "wind_speed_of_gust": (11, 0, 2, 22, 2),
             "x_wind_10m": (11, 0, 2, 2, None),
             "x_wind_pl": (11, 0, 2, 2, None),
             "y_wind_10m": (11, 0, 2, 3, None),
             "y_wind_pl": (11, 0, 2, 3, None),
-            "wind_speed_10m": (11, 0, 2, 1, None),
-            "atmosphere_boundary_layer_thickness": (11, 0, 19, 3, None),
-            "wind_speed_of_gust": (11, 0, 2, 22, 2),
-            "air_pressure_at_sea_level": (1, 0, 3, 0, None),
-            "surface_air_pressure": (11, 0, 3, 0, None),
-            "specific_humidity_pl": (11, 0, 1, 0, None),
-            "upward_air_velocity_pl": (11, 0, 2, 9, None),
-            "dew_point_temperature_2m": (11, 0, 0, 6, None),
-            "vertical_velocity_pl": (11, 0, 2, 8, None),
-            "tcw": (11, 0, 1, 3, None),
-            "skt": (11, 0, 0, 17, None),
-            "precipitation_amount": (11, 0, 1, 49, None),
-            "cp": (11, 0, 1, 10, None),
         }.get(param)
 
     def set_geometry(self, grib, nx, ny):
@@ -214,8 +229,9 @@ class Grib(Output):
             lats = np.reshape(self.pm.lats, self.pm.field_shape).astype(np.double)
             lons = np.reshape(self.pm.lons, self.pm.field_shape).astype(np.double)
             x, y = projections.get_xy(lats, lons, self.proj4_str)
-            dx = int(x[1] - x[0])
-            dy = int(y[1] - y[0])
+            dx = math.ceil(x[1] - x[0])
+            dy = math.ceil(y[1] - y[0])
+
 
         # set geometry from proj attributes
         attrs = {}
@@ -307,7 +323,7 @@ class Grib(Output):
             ecc.codes_set(grib, "perturbationNumber", ensemble_member + 1)
             ecc.codes_set(grib, "numberOfForecastsInEnsemble", self.pm.num_members)
 
-        if tosp == 1:
+        if pdtn == 8:
             year = int(validtime.strftime("%Y"))
             month = int(validtime.strftime("%m"))
             day = int(validtime.strftime("%d"))
