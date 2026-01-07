@@ -1,5 +1,4 @@
 from datetime import datetime
-import math
 
 import eccodes as ecc
 import numpy as np
@@ -62,6 +61,13 @@ class Grib(Output):
         else:
             self.proj4_str = proj4_str
 
+        self.grid = None
+
+        # set geometry from proj attributes
+        self.proj_attrs = {}
+        if self.proj4_str:
+            self.proj_attrs = projections.get_proj_attributes(self.proj4_str)
+
     def _add_forecast(self, times: list, ensemble_member: int, pred: np.array):
         if self.pm.num_members > 1:
             # Cache data with intermediate
@@ -107,6 +113,10 @@ class Grib(Output):
                     else:
                         ny = self.pm.field_shape[0]
                         nx = self.pm.field_shape[1]
+
+                    if not self.grid:
+                        self.set_grid(nx, ny)
+
                     for ens in range(self.pm.num_members):
                         self.convert_to_grib(
                             file_handle,
@@ -115,8 +125,6 @@ class Grib(Output):
                             metadata.get("level", 0) or 0,
                             metadata.get("leveltype", "height") or "surface",
                             ncname,
-                            nx,
-                            ny,
                             pred[time_index, :, variable_index, ens],
                             ensemble_member=ens,
                         )
@@ -221,27 +229,23 @@ class Grib(Output):
             "y_wind_pl": (11, 0, 2, 3, None),
         }.get(param)
 
-    def set_geometry(self, grib, nx, ny):
+    def set_grid(self, nx, ny):
         # get Dx/Dy in meters
-        dx = None
-        dy = None
+        dx, dy = None, None
         if self.proj4_str:
             lats = np.reshape(self.pm.lats, self.pm.field_shape).astype(np.double)
             lons = np.reshape(self.pm.lons, self.pm.field_shape).astype(np.double)
             x, y = projections.get_xy(lats, lons, self.proj4_str)
-            dx = math.ceil(x[1] - x[0])
-            dy = math.ceil(y[1] - y[0])
+            dx = round(x[1] - x[0])
+            dy = round(y[1] - y[0])
 
+        self.grid = {'nx': nx, 'ny': ny, 'dx': dx, 'dy': dy}
 
-        # set geometry from proj attributes
-        attrs = {}
-        if self.proj4_str:
-            attrs = projections.get_proj_attributes(self.proj4_str)
-
+    def set_geometry(self, grib, nx, ny):
         ecc.codes_set(
             grib,
             "gridDefinitionTemplateNumber",
-            self.grib_definition_to_template_number(attrs.get("grid_mapping_name")),
+            self.grib_definition_to_template_number(self.proj_attrs.get("grid_mapping_name")),
         )
         ecc.codes_set(grib, "latitudeOfSouthernPole", -90000000)
         ecc.codes_set(grib, "longitudeOfSouthernPole", 0)
@@ -252,14 +256,14 @@ class Grib(Output):
             grib, "longitudeOfFirstGridPoint", int(self.pm.lons[0] * 1_000_000)
         )
         ecc.codes_set(
-            grib, "LaD", attrs.get("latitude_of_projection_origin", 63.3) * 1_000_000
+            grib, "LaD", self.proj_attrs.get("latitude_of_projection_origin", 63.3) * 1_000_000
         )
         ecc.codes_set(
-            grib, "LoV", attrs.get("longitude_of_central_meridian", 15.0) * 1_000_000
+            grib, "LoV", self.proj_attrs.get("longitude_of_central_meridian", 15.0) * 1_000_000
         )
-        if dx and dy:
-            ecc.codes_set(grib, "DxInMetres", dx)
-            ecc.codes_set(grib, "DyInMetres", dy)
+        if self.grid['dx'] and self.grid['dy']:
+            ecc.codes_set(grib, "DxInMetres", self.grid['dx'])
+            ecc.codes_set(grib, "DyInMetres", self.grid['dy'])
         ecc.codes_set(grib, "Nx", nx)
         ecc.codes_set(grib, "Ny", ny)
         ecc.codes_set(grib, "Latin1", 63300000)
@@ -276,8 +280,6 @@ class Grib(Output):
         level_value,
         level_type,
         parameter,
-        nx,
-        ny,
         values,
         ensemble_member=None,
     ):
