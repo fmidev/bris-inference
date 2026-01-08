@@ -27,6 +27,7 @@ class Grib(Output):
         domain_name=None,
         extra_variables=None,
         remove_intermediate: bool = True,
+        accumulated_variables: list = None,
     ):
         """
         Args:
@@ -43,6 +44,12 @@ class Grib(Output):
             if extra_variables is None:
                 extra_variables = []
             self.extract_variables = variables + extra_variables
+
+        if accumulated_variables is None:
+            accumulated_variables = []
+        else:
+            self.accumulated_variables = [v '_acc' for v in accumulated_variables]
+            self.extract_variables += self.accumulated_variables
 
         self.intermediate = None
         if self.pm.num_members > 1:
@@ -102,7 +109,12 @@ class Grib(Output):
             for time_index, numpy_dt in enumerate(times):
                 dt = numpy_dt.astype(datetime)
                 for variable in self.extract_variables:
-                    variable_index = self.pm.variables.index(variable)
+
+                    if variable in self.accumulated_variables:
+                        variable_index = self.pm.variables.index(variable.removesuffix("_acc"))
+                    else:
+                        variable_index = self.pm.variables.index(variable)
+
                     ncname = self.variable_list.get_ncname_from_anemoi_name(variable)
                     metadata = cf.get_metadata(variable)
 
@@ -173,7 +185,7 @@ class Grib(Output):
             "high_type_cloud_area_fraction": (0, 0, 6, 195, None),
             "low_type_cloud_area_fraction": (0, 0, 6, 194, None),
             "medium_type_cloud_area_fraction": (0, 0, 6, 193, None),
-            "precipitation_amount": (8, 0, 1, 52, 1),
+            "precipitation_amount_acc": (8, 0, 1, 52, 1),
             "relative_humidity_2m": (0, 0, 1, 192, None),
             "relative_humidity_pl": (0, 0, 1, 192, None),
             "skt": (0, 0, 0, 17, None),
@@ -210,7 +222,7 @@ class Grib(Output):
             "high_type_cloud_area_fraction": (11, 0, 6, 195, None),
             "low_type_cloud_area_fraction": (11, 0, 6, 194, None),
             "medium_type_cloud_area_fraction": (11, 0, 6, 193, None),
-            "precipitation_amount": (11, 0, 1, 52, 1),
+            "precipitation_amount_acc": (11, 0, 1, 52, 1),
             "relative_humidity_2m": (11, 0, 1, 192, None),
             "relative_humidity_pl": (11, 0, 1, 192, None),
             "skt": (11, 0, 0, 17, None),

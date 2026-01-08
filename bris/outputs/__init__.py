@@ -76,6 +76,10 @@ def get_required_variables(name, init_args):
                 for name in init_args["extra_variables"]:
                     if name == "ws":
                         variables += ["10u", "10v"]
+            if "accumulated_variables" in init_args:
+                for var_name in init_args["accumulated_variables"]:
+                    if var_name not in variables:
+                        variables += [var_name]
             variables = sorted(set(variables))
             return variables
         return [None]
