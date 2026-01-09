@@ -48,7 +48,7 @@ class Grib(Output):
         if accumulated_variables is None:
             accumulated_variables = []
         else:
-            self.accumulated_variables = [v '_acc' for v in accumulated_variables]
+            self.accumulated_variables = [v + '_acc' for v in accumulated_variables]
             self.extract_variables += self.accumulated_variables
 
         self.intermediate = None
