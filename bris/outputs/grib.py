@@ -253,7 +253,7 @@ class Grib(Output):
 
         self.grid = {'nx': nx, 'ny': ny, 'dx': dx, 'dy': dy}
 
-    def set_geometry(self, grib, nx, ny):
+    def set_geometry(self, grib):
         ecc.codes_set(
             grib,
             "gridDefinitionTemplateNumber",
@@ -276,8 +276,8 @@ class Grib(Output):
         if self.grid['dx'] and self.grid['dy']:
             ecc.codes_set(grib, "DxInMetres", self.grid['dx'])
             ecc.codes_set(grib, "DyInMetres", self.grid['dy'])
-        ecc.codes_set(grib, "Nx", nx)
-        ecc.codes_set(grib, "Ny", ny)
+        ecc.codes_set(grib, "Nx", self.grid['nx'])
+        ecc.codes_set(grib, "Ny", self.grid['ny'])
         ecc.codes_set(grib, "Latin1", 63300000)
         ecc.codes_set(grib, "Latin2", 63300000)
         ecc.codes_set(grib, "shapeOfTheEarth", 6)
@@ -303,7 +303,7 @@ class Grib(Output):
         leadtime = validtime - origintime
 
         grib = ecc.codes_grib_new_from_samples("GRIB2")
-        grib = self.set_geometry(grib, nx, ny)
+        grib = self.set_geometry(grib)
 
         ecc.codes_set(grib, "tablesVersion", 21)
         ecc.codes_set(grib, "resolutionAndComponentFlags", 56)
