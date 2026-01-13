@@ -178,7 +178,7 @@ class Grib(Output):
             "air_temperature_pl": (0, 0, 0, 0, None),
             "atmosphere_boundary_layer_thickness": (0, 0, 19, 3, None),
             "atmosphere_mass_content_of_water": (0, 0, 1, 51, None),
-            "cloud_area_fraction": (0, 0, 6, 192, None),
+            "cloud_area_fraction": (0, 0, 6, 32, None),
             "cp": (0, 0, 1, 10, None),
             "dew_point_temperature_2m": (0, 0, 0, 6, None),
             "geopotential_pl": (0, 0, 3, 4, None),
