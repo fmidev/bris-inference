@@ -190,8 +190,8 @@ class Grib(Output):
             "relative_humidity_pl": (0, 0, 1, 192, None),
             "skt": (0, 0, 0, 17, None),
             "specific_humidity_pl": (0, 0, 1, 0, None),
-            "integral_of_surface_downwelling_shortwave_flux_in_air_wrt_time": (0, 0, 4, 3, None),
-            "integral_of_surface_downwelling_longwave_flux_in_air_wrt_time": (0, 0, 5, 3, None),
+            "integral_of_surface_downwelling_shortwave_flux_in_air_wrt_time": (8, 0, 4, 3, 1),
+            "integral_of_surface_downwelling_longwave_flux_in_air_wrt_time": (8, 0, 5, 3, 1),
             "surface_air_pressure": (0, 0, 3, 0, None),
             "tcw": (0, 0, 1, 3, None),
             "upward_air_velocity_pl": (0, 0, 2, 9, None),
@@ -227,8 +227,8 @@ class Grib(Output):
             "relative_humidity_pl": (11, 0, 1, 192, None),
             "skt": (11, 0, 0, 17, None),
             "specific_humidity_pl": (11, 0, 1, 0, None),
-            "integral_of_surface_downwelling_shortwave_flux_in_air_wrt_time": (0, 0, 4, 3, None),
-            "integral_of_surface_downwelling_longwave_flux_in_air_wrt_time": (0, 0, 5, 3, None),
+            "integral_of_surface_downwelling_shortwave_flux_in_air_wrt_time": (11, 0, 4, 3, 1),
+            "integral_of_surface_downwelling_longwave_flux_in_air_wrt_time": (11, 0, 5, 3, 1),
             "surface_air_pressure": (11, 0, 3, 0, None),
             "tcw": (11, 0, 1, 3, None),
             "upward_air_velocity_pl": (11, 0, 2, 9, None),
@@ -337,6 +337,10 @@ class Grib(Output):
             ecc.codes_set(grib, "perturbationNumber", ensemble_member + 1)
             ecc.codes_set(grib, "numberOfForecastsInEnsemble", self.pm.num_members)
 
+            if tosp is not None:
+                ecc.codes_set(grib, "typeOfStatisticalProcessing", tosp)
+
+
         if pdtn == 8:
             year = int(validtime.strftime("%Y"))
             month = int(validtime.strftime("%m"))
@@ -351,6 +355,9 @@ class Grib(Output):
 
             # forecastTime is start of time interval
             # hard code to 6h
+
+            # TODO: calculate correct lengthOfTimeRange from leadtime (configuration)
+
             lengthOfTimeRange = 6
             ecc.codes_set(
                 grib,
