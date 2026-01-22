@@ -15,7 +15,7 @@ from bris.predict_metadata import PredictMetadata
 class Grib(Output):
     """Write predictions to Grib, using CF-standards and local conventions"""
 
-    HOUR = 3600
+    HOUR = 3600  # in seconds
 
     def __init__(
         self,
@@ -30,6 +30,7 @@ class Grib(Output):
         extra_variables=None,
         remove_intermediate: bool = True,
         accumulated_variables: list = [],
+        extra_accumulation_steps: dict = None,
     ):
         """
         Args:
@@ -74,6 +75,8 @@ class Grib(Output):
         if self.proj4_str:
             self.proj_attrs = projections.get_proj_attributes(self.proj4_str)
 
+        self.extra_accumulation_steps = extra_accumulation_steps
+
     def _add_forecast(self, times: list, ensemble_member: int, pred: np.array):
         if self.pm.num_members > 1:
             # Cache data with intermediate
@@ -101,66 +104,134 @@ class Grib(Output):
     def _interpolate(self):
         return self.interp_res is None
 
+    def _ensure_grid_is_set(self):
+        """Initialize grid geometry once based on prediction metadata field shape."""
+        if self.grid:
+            return
+
+        if len(self.pm.field_shape) == 1:
+            # only one location dimension
+            nx, ny = self.pm.field_shape[0], 1
+        else:
+            nx, ny = self.pm.field_shape[0], self.pm.field_shape[1]
+
+        self.set_grid(nx, ny)
+
+    def _variable_index(self, variable: str) -> int:
+        """Map extracted variable name to index in `self.pm.variables`.
+
+        Accumulated variables are stored as '<name>_acc' but point to the
+        non-accumulated variable index in prediction metadata.
+        """
+        if variable in self.accumulated_variables:
+            return self.pm.variables.index(variable.removesuffix("_acc"))
+        return self.pm.variables.index(variable)
+
+    def _write_extra_accumulations(
+        self,
+        fp,
+        origin_time: datetime,
+        valid_time: datetime,
+        metadata: dict,
+        variable: str,
+        pred: np.ndarray,
+        time_index: int,
+        variable_index: int,
+        ensemble_member: int,
+    ) -> None:
+        """Optionally write additional accumulation windows.
+
+        `extra_accumulation_steps` is expected to map variable -> iterable[int],
+        where each int is a number of time steps to sum over ending at `time_index`.
+
+        There are no overlapping accumulation windows, i.e. if 6h aaccumulation
+        is requested, and lead times are every 1h, the 6h accumulation is written at
+        lead times 6h, 12h, 18h.
+        """
+
+        for acc_steps in self.extra_accumulation_steps.get(
+            variable.removesuffix("_acc"), []
+        ):
+            # Check that it is possible to accumulate over the given window (i.e. enough lead times,
+            # and that the lead times are aligned with the accumulation window). Modulo operator
+            # checks that accumulation windows are aligned with lead times (no overlapping windows).
+            if not (
+                time_index > 0
+                and time_index - acc_steps >= 0
+                and self.pm.leadtimes[time_index] > self.pm.leadtimes[time_index - acc_steps]
+                and self.pm.leadtimes[time_index] % (self.HOUR * acc_steps) == 0
+                and self.pm.leadtimes[time_index - acc_steps] % (self.HOUR * acc_steps) == 0
+            ):
+                continue
+
+            # Sum over the accumulation window
+            acc_values = pred[
+                time_index - acc_steps: time_index,
+                :,
+                variable_index,
+                ensemble_member,
+            ].sum(axis=0)
+
+            self.convert_to_grib(
+                fp,
+                origin_time,
+                valid_time,
+                metadata.get("level", 0) or 0,
+                metadata.get("leveltype", "height") or "surface",
+                self.variable_list.get_ncname_from_anemoi_name(variable),
+                acc_values,
+                ensemble_member=ensemble_member,
+                time_index=time_index,
+                acc_steps=acc_steps
+            )
+
     def write(self, filename: str, times: list, pred: np.array):
+        """Write predictions to a GRIB2 file.
+
+        Expected `pred` shape:
+          [time, location, variable, ensemble_member]
+        where `location` is either flattened (ny*nx) or a single spatial dimension.
+        """
         forecast_reference_time = times[0].astype(datetime)
 
         with open(filename, "wb") as file_handle:
             for time_index, numpy_dt in enumerate(times):
-                dt = numpy_dt.astype(datetime)
-                for variable in self.extract_variables:
-                    if variable in self.accumulated_variables:
-                        variable_index = self.pm.variables.index(variable.removesuffix("_acc"))
-                    else:
-                        variable_index = self.pm.variables.index(variable)
+                valid_time = numpy_dt.astype(datetime)
 
-                    ncname = self.variable_list.get_ncname_from_anemoi_name(variable)
+                for variable in self.extract_variables:
+                    variable_index = self._variable_index(variable)
                     metadata = cf.get_metadata(variable)
 
-                    # only one location dimension
-                    if len(self.pm.field_shape) == 1:
-                        ny = self.pm.field_shape[0]
-                        nx = 1
-                    else:
-                        ny = self.pm.field_shape[0]
-                        nx = self.pm.field_shape[1]
-
-                    if not self.grid:
-                        self.set_grid(nx, ny)
+                    self._ensure_grid_is_set()
 
                     for ens in range(self.pm.num_members):
                         self.convert_to_grib(
                             file_handle,
                             forecast_reference_time,
-                            dt,
+                            valid_time,
                             metadata.get("level", 0) or 0,
                             metadata.get("leveltype", "height") or "surface",
-                            ncname,
+                            self.variable_list.get_ncname_from_anemoi_name(variable),
                             pred[time_index, :, variable_index, ens],
                             ensemble_member=ens,
                             time_index=time_index,
+                            acc_steps=1
                         )
 
-                        # 6h accumulations if leadtimes are interpolated every 1h
-                        if (
-                            time_index > 0
-                            and self.pm.leadtimes[time_index] > self.pm.leadtimes[time_index - 6]
-                            and self.pm.leadtimes[time_index] % (self.HOUR * 6) == 0
-                            and self.pm.leadtimes[time_index - 6] % (self.HOUR * 6) == 0
-                            and ncname.endswith("_acc")
-                        ):
-                            self.convert_to_grib(
-                                file_handle,
-                                forecast_reference_time,
-                                dt,
-                                metadata.get("level", 0) or 0,
-                                metadata.get("leveltype", "height") or "surface",
-                                ncname,
-                                pred[
-                                    time_index - 6 : time_index, :, variable_index, ens
-                                ].sum(axis=0),
-                                ensemble_member=ens,
-                                time_index=0,
-                            )
+                        if not self.extra_accumulation_steps:
+                            continue
+
+                        self._write_extra_accumulations(
+                            fp=file_handle,
+                            origin_time=forecast_reference_time,
+                            valid_time=valid_time,
+                            metadata=metadata,
+                            variable=variable,
+                            pred=pred,
+                            time_index=time_index,
+                            variable_index=variable_index,
+                            ensemble_member=ens,
+                        )
 
     def level_type_to_id(self, level_type):
         # Map level type name to code
@@ -320,6 +391,7 @@ class Grib(Output):
         values,
         ensemble_member=None,
         time_index=0,
+        acc_steps=None,
     ):
         if self.pm.num_members > 1:
             pdtn, dis, cat, num, tosp = self.param_to_id_ens(parameter)
@@ -379,19 +451,16 @@ class Grib(Output):
             ecc.codes_set(grib, "hourOfEndOfOverallTimeInterval", hour)
 
             if time_index == 0:
-                # Analysis is included in the forecast as leadtime 0. So the forecastTime for accumulated parameters is hardcoded to the default 6h for the first time step.
+                # Analysis is included in the forecast as leadtime 0. So the forecastTime/lengthOfTimeRange
+                # for accumulated parameters is hardcoded to the default 6h for the first time step.
                 lengthOfTimeRange = 6
             else:
                 lengthOfTimeRange = int(
-                    (self.pm.leadtimes[time_index] - self.pm.leadtimes[time_index - 1])
+                    (self.pm.leadtimes[time_index] - self.pm.leadtimes[time_index - acc_steps])
                     / self.HOUR
                 )
 
-                ecc.codes_set(
-                grib,
-                "forecastTime",
-                int(leadtime.total_seconds() / self.HOUR) - lengthOfTimeRange,
-            )
+            ecc.codes_set(grib, "forecastTime", int(leadtime.total_seconds() / self.HOUR) - lengthOfTimeRange)
             ecc.codes_set(grib, "lengthOfTimeRange", lengthOfTimeRange)
 
         for key, val in self.grib_keys.items():
