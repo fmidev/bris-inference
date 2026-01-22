@@ -15,6 +15,8 @@ from bris.predict_metadata import PredictMetadata
 class Grib(Output):
     """Write predictions to Grib, using CF-standards and local conventions"""
 
+    HOUR = 3600
+
     def __init__(
         self,
         predict_metadata: PredictMetadata,
@@ -45,7 +47,7 @@ class Grib(Output):
                 extra_variables = []
             self.extract_variables = variables + extra_variables
 
-        self.accumulated_variables = [v + '_acc' for v in accumulated_variables]
+        self.accumulated_variables = [v + "_acc" for v in accumulated_variables]
         self.extract_variables += self.accumulated_variables
 
         self.intermediate = None
@@ -106,7 +108,6 @@ class Grib(Output):
             for time_index, numpy_dt in enumerate(times):
                 dt = numpy_dt.astype(datetime)
                 for variable in self.extract_variables:
-
                     if variable in self.accumulated_variables:
                         variable_index = self.pm.variables.index(variable.removesuffix("_acc"))
                     else:
@@ -138,6 +139,28 @@ class Grib(Output):
                             ensemble_member=ens,
                             time_index=time_index,
                         )
+
+                        # 6h accumulations if leadtimes are interpolated every 1h
+                        if (
+                            time_index > 0
+                            and self.pm.leadtimes[time_index] > self.pm.leadtimes[time_index - 6]
+                            and self.pm.leadtimes[time_index] % (self.HOUR * 6) == 0
+                            and self.pm.leadtimes[time_index - 6] % (self.HOUR * 6) == 0
+                            and ncname.endswith("_acc")
+                        ):
+                            self.convert_to_grib(
+                                file_handle,
+                                forecast_reference_time,
+                                dt,
+                                metadata.get("level", 0) or 0,
+                                metadata.get("leveltype", "height") or "surface",
+                                ncname,
+                                pred[
+                                    time_index - 6 : time_index, :, variable_index, ens
+                                ].sum(axis=0),
+                                ensemble_member=ens,
+                                time_index=0,
+                            )
 
     def level_type_to_id(self, level_type):
         # Map level type name to code
@@ -249,7 +272,7 @@ class Grib(Output):
             dx = round(x[1] - x[0])
             dy = round(y[1] - y[0])
 
-        self.grid = {'nx': nx, 'ny': ny, 'dx': dx, 'dy': dy}
+        self.grid = {"nx": nx, "ny": ny, "dx": dx, "dy": dy}
 
     def set_geometry(self, grib):
         ecc.codes_set(
@@ -266,16 +289,20 @@ class Grib(Output):
             grib, "longitudeOfFirstGridPoint", int(self.pm.lons[0] * 1_000_000)
         )
         ecc.codes_set(
-            grib, "LaD", self.proj_attrs.get("latitude_of_projection_origin", 63.3) * 1_000_000
+            grib,
+            "LaD",
+            self.proj_attrs.get("latitude_of_projection_origin", 63.3) * 1_000_000,
         )
         ecc.codes_set(
-            grib, "LoV", self.proj_attrs.get("longitude_of_central_meridian", 15.0) * 1_000_000
+            grib,
+            "LoV",
+            self.proj_attrs.get("longitude_of_central_meridian", 15.0) * 1_000_000,
         )
-        if self.grid['dx'] and self.grid['dy']:
-            ecc.codes_set(grib, "DxInMetres", self.grid['dx'])
-            ecc.codes_set(grib, "DyInMetres", self.grid['dy'])
-        ecc.codes_set(grib, "Nx", self.grid['nx'])
-        ecc.codes_set(grib, "Ny", self.grid['ny'])
+        if self.grid["dx"] and self.grid["dy"]:
+            ecc.codes_set(grib, "DxInMetres", self.grid["dx"])
+            ecc.codes_set(grib, "DyInMetres", self.grid["dy"])
+        ecc.codes_set(grib, "Nx", self.grid["nx"])
+        ecc.codes_set(grib, "Ny", self.grid["ny"])
         ecc.codes_set(grib, "Latin1", 63300000)
         ecc.codes_set(grib, "Latin2", 63300000)
         ecc.codes_set(grib, "shapeOfTheEarth", 6)
@@ -322,7 +349,7 @@ class Grib(Output):
         ecc.codes_set(grib, "level", level_value)
         ecc.codes_set(grib, "dataDate", int(origintime.strftime("%Y%m%d")))
         ecc.codes_set(grib, "dataTime", int(origintime.strftime("%H%M")))
-        ecc.codes_set(grib, "forecastTime", int(leadtime.total_seconds() / 3600))
+        ecc.codes_set(grib, "forecastTime", int(leadtime.total_seconds() / self.HOUR))
         ecc.codes_set(grib, "bitsPerValue", 24)
         ecc.codes_set(grib, "packingType", "grid_ccsds")
         ecc.codes_set_values(grib, values)
@@ -338,7 +365,6 @@ class Grib(Output):
 
             if tosp is not None:
                 ecc.codes_set(grib, "typeOfStatisticalProcessing", tosp)
-
 
         if tosp == 1:
             year = int(validtime.strftime("%Y"))
@@ -356,12 +382,15 @@ class Grib(Output):
                 # Analysis is included in the forecast as leadtime 0. So the forecastTime for accumulated parameters is hardcoded to the default 6h for the first time step.
                 lengthOfTimeRange = 6
             else:
-                lengthOfTimeRange = int((self.pm.leadtimes[time_index] - self.pm.leadtimes[time_index - 1]) / 3600)
+                lengthOfTimeRange = int(
+                    (self.pm.leadtimes[time_index] - self.pm.leadtimes[time_index - 1])
+                    / self.HOUR
+                )
 
-            ecc.codes_set(
+                ecc.codes_set(
                 grib,
                 "forecastTime",
-                int(leadtime.total_seconds() / 3600) - lengthOfTimeRange,
+                int(leadtime.total_seconds() / self.HOUR) - lengthOfTimeRange,
             )
             ecc.codes_set(grib, "lengthOfTimeRange", lengthOfTimeRange)
 
