@@ -27,7 +27,7 @@ class Grib(Output):
         domain_name=None,
         extra_variables=None,
         remove_intermediate: bool = True,
-        accumulated_variables: list = None,
+        accumulated_variables: list = [],
     ):
         """
         Args:
@@ -45,11 +45,8 @@ class Grib(Output):
                 extra_variables = []
             self.extract_variables = variables + extra_variables
 
-        if accumulated_variables is None:
-            accumulated_variables = []
-        else:
-            self.accumulated_variables = [v + '_acc' for v in accumulated_variables]
-            self.extract_variables += self.accumulated_variables
+        self.accumulated_variables = [v + '_acc' for v in accumulated_variables]
+        self.extract_variables += self.accumulated_variables
 
         self.intermediate = None
         if self.pm.num_members > 1:
@@ -139,6 +136,7 @@ class Grib(Output):
                             ncname,
                             pred[time_index, :, variable_index, ens],
                             ensemble_member=ens,
+                            time_index=time_index,
                         )
 
     def level_type_to_id(self, level_type):
@@ -294,6 +292,7 @@ class Grib(Output):
         parameter,
         values,
         ensemble_member=None,
+        time_index=0,
     ):
         if self.pm.num_members > 1:
             pdtn, dis, cat, num, tosp = self.param_to_id_ens(parameter)
@@ -341,7 +340,7 @@ class Grib(Output):
                 ecc.codes_set(grib, "typeOfStatisticalProcessing", tosp)
 
 
-        if pdtn == 8:
+        if tosp == 1:
             year = int(validtime.strftime("%Y"))
             month = int(validtime.strftime("%m"))
             day = int(validtime.strftime("%d"))
@@ -353,12 +352,12 @@ class Grib(Output):
             ecc.codes_set(grib, "dayOfEndOfOverallTimeInterval", day)
             ecc.codes_set(grib, "hourOfEndOfOverallTimeInterval", hour)
 
-            # forecastTime is start of time interval
-            # hard code to 6h
+            if time_index == 0:
+                # Analysis is included in the forecast as leadtime 0. So the forecastTime for accumulated parameters is hardcoded to the default 6h for the first time step.
+                lengthOfTimeRange = 6
+            else:
+                lengthOfTimeRange = int((self.pm.leadtimes[time_index] - self.pm.leadtimes[time_index - 1]) / 3600)
 
-            # TODO: calculate correct lengthOfTimeRange from leadtime (configuration)
-
-            lengthOfTimeRange = 6
             ecc.codes_set(
                 grib,
                 "forecastTime",
