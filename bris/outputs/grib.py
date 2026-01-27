@@ -111,9 +111,9 @@ class Grib(Output):
 
         if len(self.pm.field_shape) == 1:
             # only one location dimension
-            nx, ny = self.pm.field_shape[0], 1
+            ny, nx = self.pm.field_shape[0], 1
         else:
-            nx, ny = self.pm.field_shape[0], self.pm.field_shape[1]
+            ny, nx = self.pm.field_shape[0], self.pm.field_shape[1]
 
         self.set_grid(nx, ny)
 
