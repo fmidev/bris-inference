@@ -302,35 +302,35 @@ class Grib(Output):
         # https://www.nco.ncep.noaa.gov/pmb/docs/grib2/grib2_doc/grib2_table4-0.shtml
         return {
             "air_pressure_at_sea_level": (1, 0, 3, 0, None),
-            "air_temperature_0m": (11, 0, 0, 0, None),
-            "air_temperature_2m": (11, 0, 0, 0, None),
-            "air_temperature_pl": (11, 0, 0, 0, None),
-            "atmosphere_boundary_layer_thickness": (11, 0, 19, 3, None),
-            "atmosphere_mass_content_of_water": (11, 0, 1, 51, None),
-            "cloud_area_fraction": (11, 0, 6, 192, None),
-            "cp": (11, 0, 1, 10, None),
-            "dew_point_temperature_2m": (11, 0, 0, 6, None),
-            "geopotential_pl": (11, 0, 3, 4, None),
-            "high_type_cloud_area_fraction": (11, 0, 6, 195, None),
-            "low_type_cloud_area_fraction": (11, 0, 6, 193, None),
-            "medium_type_cloud_area_fraction": (11, 0, 6, 194, None),
+            "air_temperature_0m": (1, 0, 0, 0, None),
+            "air_temperature_2m": (1, 0, 0, 0, None),
+            "air_temperature_pl": (1, 0, 0, 0, None),
+            "atmosphere_boundary_layer_thickness": (1, 0, 19, 3, None),
+            "atmosphere_mass_content_of_water": (1, 0, 1, 51, None),
+            "cloud_area_fraction": (1, 0, 6, 192, None),
+            "cp": (1, 0, 1, 10, None),
+            "dew_point_temperature_2m": (1, 0, 0, 6, None),
+            "geopotential_pl": (1, 0, 3, 4, None),
+            "high_type_cloud_area_fraction": (1, 0, 6, 195, None),
+            "low_type_cloud_area_fraction": (1, 0, 6, 193, None),
+            "medium_type_cloud_area_fraction": (1, 0, 6, 194, None),
             "precipitation_amount_acc": (11, 0, 1, 52, 1),
-            "relative_humidity_2m": (11, 0, 1, 192, None),
-            "relative_humidity_pl": (11, 0, 1, 192, None),
-            "skt": (11, 0, 0, 17, None),
-            "specific_humidity_pl": (11, 0, 1, 0, None),
+            "relative_humidity_2m": (1, 0, 1, 192, None),
+            "relative_humidity_pl": (1, 0, 1, 192, None),
+            "skt": (1, 0, 0, 17, None),
+            "specific_humidity_pl": (1, 0, 1, 0, None),
             "integral_of_surface_downwelling_shortwave_flux_in_air_wrt_time": (11, 0, 4, 3, 1),
             "integral_of_surface_downwelling_longwave_flux_in_air_wrt_time": (11, 0, 5, 3, 1),
-            "surface_air_pressure": (11, 0, 3, 0, None),
-            "tcw": (11, 0, 1, 3, None),
-            "upward_air_velocity_pl": (11, 0, 2, 9, None),
-            "vertical_velocity_pl": (11, 0, 2, 8, None),
-            "wind_speed_10m": (11, 0, 2, 1, None),
-            "wind_speed_of_gust": (11, 0, 2, 22, 2),
-            "x_wind_10m": (11, 0, 2, 2, None),
-            "x_wind_pl": (11, 0, 2, 2, None),
-            "y_wind_10m": (11, 0, 2, 3, None),
-            "y_wind_pl": (11, 0, 2, 3, None),
+            "surface_air_pressure": (1, 0, 3, 0, None),
+            "tcw": (1, 0, 1, 3, None),
+            "upward_air_velocity_pl": (1, 0, 2, 9, None),
+            "vertical_velocity_pl": (1, 0, 2, 8, None),
+            "wind_speed_10m": (1, 0, 2, 1, None),
+            "wind_speed_of_gust": (1, 0, 2, 22, 2),
+            "x_wind_10m": (1, 0, 2, 2, None),
+            "x_wind_pl": (1, 0, 2, 2, None),
+            "y_wind_10m": (1, 0, 2, 3, None),
+            "y_wind_pl": (1, 0, 2, 3, None),
         }.get(param)
 
     def set_grid(self, nx, ny):
@@ -431,7 +431,7 @@ class Grib(Output):
             and self.pm.num_members > 1
             and pdtn in [1, 2, 11]
         ):
-            ecc.codes_set(grib, "typeOfEnsembleForecast", 1)
+            ecc.codes_set(grib, "typeOfEnsembleForecast", 6)
             ecc.codes_set(grib, "perturbationNumber", ensemble_member + 1)
             ecc.codes_set(grib, "numberOfForecastsInEnsemble", self.pm.num_members)
 
