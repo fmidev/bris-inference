@@ -451,9 +451,7 @@ class Grib(Output):
             ecc.codes_set(grib, "hourOfEndOfOverallTimeInterval", hour)
 
             if time_index == 0:
-                # Analysis is included in the forecast as leadtime 0. So the forecastTime/lengthOfTimeRange
-                # for accumulated parameters is hardcoded to the default 6h for the first time step.
-                lengthOfTimeRange = 6
+                lengthOfTimeRange = acc_steps
             else:
                 lengthOfTimeRange = int(
                     (self.pm.leadtimes[time_index] - self.pm.leadtimes[time_index - acc_steps])
