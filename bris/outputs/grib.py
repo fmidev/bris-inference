@@ -434,6 +434,8 @@ class Grib(Output):
             ecc.codes_set(grib, "typeOfEnsembleForecast", 6)
             ecc.codes_set(grib, "perturbationNumber", ensemble_member + 1)
             ecc.codes_set(grib, "numberOfForecastsInEnsemble", self.pm.num_members)
+            ecc.codes_set(grib, "typeOfProcessedData", 4)
+            ecc.codes_set(grib, "typeOfGeneratingProcess", 4)
 
             if tosp is not None:
                 ecc.codes_set(grib, "typeOfStatisticalProcessing", tosp)
