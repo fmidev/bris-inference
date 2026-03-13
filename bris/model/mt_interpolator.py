@@ -446,16 +446,14 @@ class mtInterpolator(BasePredictor):
                         times.append(time_interp)
 
                     fcast_index += self.interpolator_steps
-                if not self.reforcast_last:    
+                else:
                     y_preds[:, fcast_index] = self.forecaster.post_processors(
                         y_pred, in_place=True
                     )[:, 0, :, self.indices["forecaster"]["variables_output"]].cpu()
                     time += self.timestep_forecaster
                     times.append(time)
                     fcast_index += 1
-                else:
-                    time += self.timestep_forecaster
-                    
+
         self.update_batch_info(time)
         return {
             "pred": [y_preds.to(torch.float32).numpy()],

@@ -470,7 +470,7 @@ class Grib(Output):
         ecc.codes_release(grib)
 
     def finalize(self):
-        if self.intermediate is not None:
+        if self.pm.num_members > 1:
             # Load data from the intermediate and write to disk
             forecast_reference_times = self.intermediate.get_forecast_reference_times()
             for forecast_reference_time in forecast_reference_times:
