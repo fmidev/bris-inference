@@ -1,8 +1,10 @@
 import os
+import time
 from collections.abc import Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 
 import numpy as np
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import BasePredictionWriter
 from pytorch_lightning.core.module import LightningModule
 from pytorch_lightning.trainer.trainer import Trainer
@@ -112,3 +114,29 @@ class CustomWriter(BasePredictionWriter):
                 process.result()
         LOGGER.debug("CustomWriter all processes finished.")
         self.pool.shutdown(wait=True)
+
+
+class OutputFinalizer(pl.Callback):
+    """Callback that finalizes all outputs after prediction completes.
+
+    Must be registered AFTER CustomWriter so that on_predict_end runs after
+    CustomWriter has flushed all background write threads. Runs inside the DDP
+    context (before Lightning's teardown), so trainer.global_rank is reliable.
+    """
+
+    def __init__(self, decoder_outputs: list[dict], start_time: float) -> None:
+        super().__init__()
+        self.decoder_outputs = decoder_outputs
+        self.start_time = start_time
+
+    def on_predict_end(self, trainer: Trainer, pl_module: LightningModule) -> None:
+        if trainer.global_rank != 0:
+            LOGGER.info(f"Bris instance completed in {time.perf_counter() - self.start_time:.1f}s.")
+            return
+        LOGGER.debug("OutputFinalizer: starting finalize on rank 0.")
+        t0 = time.perf_counter()
+        for decoder_output in self.decoder_outputs:
+            for output in decoder_output["outputs"]:
+                output.finalize()
+        LOGGER.debug(f"OutputFinalizer: finalized all outputs in {time.perf_counter() - t0:.1f}s.")
+        LOGGER.info(f"Bris main completed in {time.perf_counter() - self.start_time:.1f}s. 🤖")

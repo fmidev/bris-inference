@@ -111,6 +111,9 @@ class NativeGridDataset(IterableDataset):
                 )
         
 
+    def __len__(self) -> int:
+        return len(self.valid_date_indices) * self.num_members_in_sequence
+
     @cached_property
     def valid_date_indices(self) -> np.ndarray:
         """Return common valid date indices for all datasets.

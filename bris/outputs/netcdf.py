@@ -5,6 +5,7 @@ from functools import cached_property
 import gridpp
 import numpy as np
 import xarray as xr
+import torch.distributed as dist
 
 import bris.units
 from bris import projections, utils
@@ -15,6 +16,7 @@ from bris.conventions.variable_list import VariableList
 from bris.outputs import Output
 from bris.outputs.intermediate import Intermediate
 from bris.predict_metadata import PredictMetadata
+
 
 
 class Netcdf(Output):
@@ -59,6 +61,13 @@ class Netcdf(Output):
             compression (bool): If true, write compressed output files
         """
         super().__init__(predict_metadata, extra_variables)
+
+        self._disabled = dist.is_available() and dist.is_initialized() and dist.get_rank() != 0
+        if self._disabled:
+            # IMPORTANT: do not open mask files, do not create Intermediate, do nothing.
+            self.filename_pattern = filename_pattern
+            self.pm = predict_metadata
+            return
 
         self.filename_pattern = filename_pattern
         if variables is None:
@@ -111,9 +120,24 @@ class Netcdf(Output):
                 mask = self.ds_mask[mask_field].values
             self.mask = mask == 1.0
 
+
+    def _cleanup_datasets(self):
+        for name in ["ds", "ds_mask"]:
+            obj = getattr(self, name, None)
+            if obj is not None:
+                try:
+                    obj.close()
+                except Exception:
+                    pass
+                setattr(self, name, None)
+
+
     def _add_forecast(
         self, times: list, ensemble_member: int, pred: np.ndarray
     ) -> None:
+        if getattr(self, "_disabled", False):
+            return
+
         t0 = pytime.perf_counter()
         if self.pm.num_members > 1 and self.intermediate is not None:
             # Cache data with intermediate
@@ -165,6 +189,8 @@ class Netcdf(Output):
             times: List of np.datetime64 objects that this forecast is for
             pred: 4D numpy array with dimensions (leadtimes, points, variables, members)
         """
+        if getattr(self, "_disabled", False):
+            return
 
         coords = {}
         self.nc_encoding: dict[str, dict[str, bool]] = {}
@@ -616,11 +642,15 @@ class Netcdf(Output):
             unlimited_dims=["time"],
             encoding=self.nc_encoding,
         )
+        self._cleanup_datasets()
         utils.LOGGER.debug(
             f"netcdf._write_file Done in {pytime.perf_counter() - t0:.1f}s"
         )
 
     def finalize(self):
+        if getattr(self, "_disabled", False):
+            return
+
         t0 = pytime.perf_counter()
 
         if self.pm.num_members > 1:
@@ -648,6 +678,7 @@ class Netcdf(Output):
 
             if self.remove_intermediate:
                 self.intermediate.cleanup()
+        self._cleanup_datasets()
         utils.LOGGER.debug(
             f"Netcdf.finalize: {pytime.perf_counter() - t0:.1f}s",
         )

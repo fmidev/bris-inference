@@ -1,4 +1,5 @@
 import gridpp
+import netCDF4 as nc4
 import numpy as np
 import scipy.interpolate
 import xarray as xr
@@ -220,147 +221,41 @@ class Verif(Output):
         return np.full(shape, np.nan, dtype)
 
     def finalize(self) -> None:
-        """Write forecasts and observations to file"""
+        """Write forecasts and observations to file (streaming per-FRT to avoid OOM)."""
 
         frts = self.intermediate.get_forecast_reference_times()
         frts_unix = utils.datetime_to_unixtime(frts).astype(np.double)
 
-        coords = {}
-        coords["time"] = (["time"], frts_unix, cf.get_attributes("time"))
-        coords["leadtime"] = (
-            ["leadtime"],
-            self.intermediate.pm.leadtimes.astype(np.float32) / 3600,
-            {"units": "hour"},
-        )
+        if len(frts) == 0:
+            utils.LOGGER.warning("Could not finalize verif, no forecast reference times")
+            return
+
+        n_frts = len(frts)
+        n_lt = self.intermediate.pm.num_leadtimes
+        n_loc = self.intermediate.pm.num_points
+        leadtimes_h = self.intermediate.pm.leadtimes.astype(np.float32) / 3600
+
         assert len(self.obs_ids) == len(self.opoints.get_lats()), (
             len(self.obs_ids),
             len(self.opoints.get_lats()),
         )
-        coords["location"] = (["location"], self.obs_ids)
-        coords["lat"] = (
-            ["location"],
-            self.opoints.get_lats(),
-            cf.get_attributes("latitude"),
-        )
-        coords["lon"] = (
-            ["location"],
-            self.opoints.get_lons(),
-            cf.get_attributes("longitude"),
-        )
-        coords["altitude"] = (
-            ["location"],
-            self.opoints.get_elevs(),
-            cf.get_attributes("surface_altitude"),
-        )
-        if self.num_members > 1:
-            coords["ensemble_member"] = (
-                ["ensemble_member"],
-                np.arange(self.num_members),
-            )
-            if len(self.thresholds) > 0:
-                coords["threshold"] = (
-                    ["threshold"],
-                    self.thresholds,
-                )
-            if len(self.quantile_levels) > 0:
-                coords["quantile"] = (
-                    ["quantile"],
-                    self.quantile_levels,
-                )
-        if self.variable_type == "logit":
-            # Add threshold variable
-            coords["threshold"] = (["threshold"], self.thresholds)
 
-        self.ds = xr.Dataset(coords=coords)
-
-        # Load forecasts
-        fcst_shape = (
-            len(frts),
-            self.intermediate.pm.num_leadtimes,
-            self.intermediate.pm.num_points,
-        )
-        fcst = self.create_nan_array(fcst_shape)
-        ens_mean = self.create_nan_array(fcst_shape)
-        ens = self.create_nan_array(fcst_shape + (self.num_members,))
-        for i, frt in enumerate(frts):
-            curr = self.intermediate.get_forecast(frt)[..., 0, :]
-            fcst[i, ...] = self.compute_consensus(curr)
-            if self.num_members > 1:
-                ens[i, ...] = curr
-                ens_mean[i, ...] = curr.mean(axis=-1)
-
-        if self.variable_type in ["logit", "threshold_probability"]:
-            cdf = np.copy(fcst)
-            # Apply sigmoid activation function to logits
-            if self.variable_type == "logit":
-                cdf = 1 / (1 + np.exp(-cdf))
-
-            # Add more axes
-            cdf = np.expand_dims(cdf, axis=-1)
-            cdf = np.tile(cdf, (1, 1, 1, len(self.thresholds)))
-            self.ds["cdf"] = (["time", "leadtime", "location", "threshold"], 1 - cdf)
-
-        else:
-            self.ds["fcst"] = (["time", "leadtime", "location"], fcst)
-
-            if self.num_members > 1:
-                self.ds["ensemble"] = (
-                    ["time", "leadtime", "location", "ensemble_member"],
-                    ens,
-                )
-                self.ds["ens-mean"] = (["time", "leadtime", "location"], ens_mean)
-            # Load threshold forecasts
-            if len(self.thresholds) > 0 and self.num_members > 1:
-                cdf = self.create_nan_array(fcst_shape + (len(self.thresholds),))
-                for i, frt in enumerate(frts):
-                    curr = self.intermediate.get_forecast(frt)[..., 0, :]
-                    for t, threshold in enumerate(self.thresholds):
-                        cdf[i, ..., t] = self.compute_threshold_prob(
-                            curr, threshold, self.fair_threshold
-                        )
-
-                        self.ds["cdf"] = (
-                            ["time", "leadtime", "location", "threshold"],
-                            cdf,
-                        )
-
-            # Load quantile forecasts
-            if len(self.quantile_levels) > 0 and self.num_members > 1:
-                x = self.create_nan_array(fcst_shape + (len(self.quantile_levels),))
-                for i, frt in enumerate(frts):
-                    curr = self.intermediate.get_forecast(frt)[
-                        :, :, 0, :
-                    ]  # Remove variable dimension
-                    for t, quantile_level in enumerate(self.quantile_levels):
-                        x[i, ..., t] = self.compute_quantile(
-                            curr, quantile_level, self.fair_quantile
-                        )
-
-                        self.ds["x"] = (["time", "leadtime", "location", "quantile"], x)
-
-        # Find which valid times we need observations for
+        # ── Build obs array (small: n_frts × n_lt × n_loc) ───────────────────
         frts_ut = utils.datetime_to_unixtime(frts)
         a, b = np.meshgrid(frts_ut, np.array(self.intermediate.pm.leadtimes))
         valid_times = a + b
-        valid_times = valid_times.transpose()
-        if len(valid_times) == 0:
+        valid_times = valid_times.transpose()  # (n_frts, n_lt)
+
+        unique_valid_times = np.sort(np.unique(valid_times.flatten()))
+        if len(unique_valid_times) == 0:
             utils.LOGGER.warning("Could not finalize verif, no valid times")
             return
 
-        # valid_times = np.sort(np.unique(valid_times.flatten()))
-        unique_valid_times = np.sort(np.unique(valid_times.flatten()))
-
         start_time = int(np.min(unique_valid_times))
         end_time = int(np.max(unique_valid_times))
+        frequency = 3600 if start_time == end_time else int(np.min(np.diff(unique_valid_times)))
 
-        if start_time == end_time:
-            # Any number will do
-            frequency = 3600
-        else:
-            frequency = int(np.min(np.diff(unique_valid_times)))
-
-        # Fill in retrieved observations into our obs array.
-        obs = self.create_nan_array(fcst_shape)
+        obs = self.create_nan_array((n_frts, n_lt, n_loc))
         count = 0
         for obs_source in self.obs_sources:
             curr = obs_source.get(self.variable, start_time, end_time, frequency)
@@ -372,47 +267,124 @@ class Verif(Output):
                 if data is not None:
                     if None not in [obs_source.units, self.units]:
                         bris.units.convert(data, from_units, to_units, inplace=True)
-
                     Iout = range(count, len(obs_source.locations) + count)
                     for i in range(len(Itimes)):
-                        # Copy observation into all times/leadtimes that matches this valid time
                         obs[Itimes[i], Ileadtimes[i], Iout] = data
             count += len(obs_source.locations)
 
-        self.ds["obs"] = (["time", "leadtime", "location"], obs)
-
-        if self.num_members > 1:
-            crps = self.compute_crps(ens, obs, self.fair_crps)
-            self.ds["crps"] = (["time", "leadtime", "location"], crps)
-
-        self.ds.attrs["units"] = self.units
-        self.ds.attrs["verif_version"] = "1.0.0"
-        self.ds.attrs["standard_name"] = cf.get_metadata(self.variable)["cfname"]
-
+        # ── Create NetCDF file and write one FRT at a time ────────────────────
         utils.create_directory(self.filename)
+        zlib = self.compression
 
-        data_variables = [
-            "obs",
-            "fcst",
-            "ensemble",
-            "ens-mean",
-            "cdf",
-            "x",
-            "crps",
-            "pit",
-        ]
-        if self.compression:
-            nc_encoding = {v: {"zlib": True} for v in data_variables if v in self.ds}
-        else:
-            nc_encoding = dict()
+        with nc4.Dataset(self.filename, "w", format="NETCDF4") as ds:
+            ds.units = self.units
+            ds.verif_version = "1.0.0"
+            ds.standard_name = cf.get_metadata(self.variable)["cfname"]
 
-        self.ds.to_netcdf(
-            self.filename,
-            mode="w",
-            engine="netcdf4",
-            unlimited_dims=["time"],
-            encoding=nc_encoding,
-        )
+            ds.createDimension("time", None)  # unlimited
+            ds.createDimension("leadtime", n_lt)
+            ds.createDimension("location", n_loc)
+
+            v_time = ds.createVariable("time", "f8", ("time",))
+            for k, val in cf.get_attributes("time").items():
+                setattr(v_time, k, val)
+            v_time[:] = frts_unix
+
+            v_lt = ds.createVariable("leadtime", "f4", ("leadtime",))
+            v_lt.units = "hour"
+            v_lt[:] = leadtimes_h
+
+            v_loc = ds.createVariable("location", "i4", ("location",))
+            v_loc[:] = np.array(self.obs_ids)
+
+            v_lat = ds.createVariable("lat", "f4", ("location",))
+            for k, val in cf.get_attributes("latitude").items():
+                setattr(v_lat, k, val)
+            v_lat[:] = self.opoints.get_lats()
+
+            v_lon = ds.createVariable("lon", "f4", ("location",))
+            for k, val in cf.get_attributes("longitude").items():
+                setattr(v_lon, k, val)
+            v_lon[:] = self.opoints.get_lons()
+
+            v_alt = ds.createVariable("altitude", "f4", ("location",))
+            for k, val in cf.get_attributes("surface_altitude").items():
+                setattr(v_alt, k, val)
+            v_alt[:] = self.opoints.get_elevs()
+
+            v_obs = ds.createVariable("obs", "f4", ("time", "leadtime", "location"), zlib=zlib)
+            v_obs[:] = obs
+
+            if self.variable_type in ["logit", "threshold_probability"]:
+                ds.createDimension("threshold", len(self.thresholds))
+                v_thr = ds.createVariable("threshold", "f4", ("threshold",))
+                v_thr[:] = np.array(self.thresholds)
+                v_cdf = ds.createVariable("cdf", "f4", ("time", "leadtime", "location", "threshold"), zlib=zlib)
+                for i, frt in enumerate(frts):
+                    curr = self.intermediate.get_forecast(frt)[..., 0, :]  # (lt, loc, mbr) or (lt, loc)
+                    if curr.ndim == 2:
+                        curr = curr[..., np.newaxis]
+                    fcst_frt = self.compute_consensus(curr)  # (lt, loc)
+                    if self.variable_type == "logit":
+                        p = 1 / (1 + np.exp(-fcst_frt))
+                    else:
+                        p = fcst_frt
+                    cdf_frt = np.empty((n_lt, n_loc, len(self.thresholds)), dtype=np.float32)
+                    for t in range(len(self.thresholds)):
+                        cdf_frt[..., t] = 1 - p
+                    v_cdf[i, :, :, :] = cdf_frt
+
+            else:
+                v_fcst = ds.createVariable("fcst", "f4", ("time", "leadtime", "location"), zlib=zlib)
+
+                if self.num_members > 1:
+                    ds.createDimension("ensemble_member", self.num_members)
+                    v_ens = ds.createVariable(
+                        "ensemble", "f4", ("time", "leadtime", "location", "ensemble_member"), zlib=zlib
+                    )
+                    v_emean = ds.createVariable("ens-mean", "f4", ("time", "leadtime", "location"), zlib=zlib)
+                    v_crps = ds.createVariable("crps", "f4", ("time", "leadtime", "location"), zlib=zlib)
+
+                    if len(self.thresholds) > 0:
+                        ds.createDimension("threshold", len(self.thresholds))
+                        v_thr = ds.createVariable("threshold", "f4", ("threshold",))
+                        v_thr[:] = np.array(self.thresholds)
+                        v_cdf = ds.createVariable(
+                            "cdf", "f4", ("time", "leadtime", "location", "threshold"), zlib=zlib
+                        )
+                    if len(self.quantile_levels) > 0:
+                        ds.createDimension("quantile", len(self.quantile_levels))
+                        v_ql = ds.createVariable("quantile", "f4", ("quantile",))
+                        v_ql[:] = np.array(self.quantile_levels)
+                        v_x = ds.createVariable(
+                            "x", "f4", ("time", "leadtime", "location", "quantile"), zlib=zlib
+                        )
+
+                for i, frt in enumerate(frts):
+                    curr = self.intermediate.get_forecast(frt)[..., 0, :]  # (lt, loc, mbr) or (lt, loc)
+                    if curr.ndim == 2:
+                        curr = curr[..., np.newaxis]
+                    v_fcst[i, :, :] = self.compute_consensus(curr)
+
+                    if self.num_members > 1:
+                        v_ens[i, :, :, :] = curr
+                        v_emean[i, :, :] = curr.mean(axis=-1)
+                        crps_frt = self.compute_crps(
+                            curr[np.newaxis], obs[i : i + 1], self.fair_crps
+                        )[0]
+                        v_crps[i, :, :] = crps_frt
+
+                        if len(self.thresholds) > 0:
+                            cdf_frt = np.empty((n_lt, n_loc, len(self.thresholds)), dtype=np.float32)
+                            for t, threshold in enumerate(self.thresholds):
+                                cdf_frt[..., t] = self.compute_threshold_prob(curr, threshold, self.fair_threshold)
+                            v_cdf[i, :, :, :] = cdf_frt
+
+                        if len(self.quantile_levels) > 0:
+                            x_frt = np.empty((n_lt, n_loc, len(self.quantile_levels)), dtype=np.float32)
+                            for t, quantile_level in enumerate(self.quantile_levels):
+                                x_frt[..., t] = self.compute_quantile(curr, quantile_level, self.fair_quantile)
+                            v_x[i, :, :, :] = x_frt
 
         if self.remove_intermediate:
             self.intermediate.cleanup()

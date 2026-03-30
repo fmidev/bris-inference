@@ -21,7 +21,7 @@ from .utils import (
     setup_logging,
     get_dataset_config,
 )
-from .writer import CustomWriter
+from .writer import CustomWriter, OutputFinalizer
 
 
 def main(arg_list: list[str] | None = None):
@@ -173,7 +173,11 @@ def main(arg_list: list[str] | None = None):
         num_members_in_parallel=num_members_in_parallel,
     )
 
-    callbacks = [writer]
+    # OutputFinalizer must come AFTER writer so its on_predict_end runs after
+    # CustomWriter has flushed all background write threads. It calls output.finalize()
+    # while DDP is still active, so trainer.global_rank is reliable.
+    finalizer = OutputFinalizer(decoder_outputs, start_time=t0)
+    callbacks = [writer, finalizer]
 
     inference = Inference(
         config=config,
@@ -184,28 +188,14 @@ def main(arg_list: list[str] | None = None):
     )
     inference.run()
 
-    # Wait for all writer processes to finish
+    # Wait for any remaining background write processes (safety net; normally already
+    # drained by CustomWriter.on_predict_end before inference.run() returns).
     if write_process_list is not None:
         while len(write_process_list) > 0:
             t2 = time.perf_counter()
             p = write_process_list.pop()
             p.result()
             LOGGER.debug(f"Waited {time.perf_counter() - t2:.1f}s for {p} to complete.")
-
-    # Finalize all outputs, so they can flush to disk if needed
-    is_main_thread = ("SLURM_PROCID" not in os.environ) or (
-        os.environ["SLURM_PROCID"] == "0"
-    )
-    if is_main_thread:
-        LOGGER.debug("Starting finalizing all outputs.")
-        t1 = time.perf_counter()
-        for decoder_output in decoder_outputs:
-            for output in decoder_output["outputs"]:
-                output.finalize()
-        LOGGER.debug(f"Finalized all outputs in {time.perf_counter() - t1:.1f}s.")
-        LOGGER.info(f"Bris main completed in {time.perf_counter() - t0:.1f}s. 🤖")
-    else:
-        LOGGER.info(f"Bris instance completed in {time.perf_counter() - t0:.1f}s.")
 
 
 if __name__ == "__main__":
