@@ -446,6 +446,7 @@ class mtInterpolator(BasePredictor):
                         times.append(time_interp)
 
                     fcast_index += self.interpolator_steps
+                    time += self.timestep_forecaster
                 else:
                     y_preds[:, fcast_index] = self.forecaster.post_processors(
                         y_pred, in_place=True
